@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+version=1.0
+
 # USAGE ask_user(var_name, title, default, prompt)
 ask_user() {
     echo -en "\e[1m${2:-Please choose:}\e[0m"
@@ -81,11 +83,20 @@ show_selector() {
 
 # ============================================================================
 
+cmd=$1
+shift
+filter=$1
+shift
+
 is_installed=`alias | grep "xcd=" | wc -l`
-if [ "$is_installed" == "0" ]; then
-    echo =======================================================================
-    echo Please install xcd by putting \"alias xcd='. xcd'\" into your rc script
-    echo =======================================================================
+if [ "$is_installed" -eq "0" ] && [ ! "$cmd" == "--setup" ]; then
+    echo "========================================================================="
+    echo " Please install xcd by putting \"alias xcd='. xcd'\" into your rc script."
+    if [ -f "$HOME/.bashrc" ]; then
+        echo " You can automatically setup the alias in your .bashrc by running:"
+        echo "     xcd --setup"
+    fi
+    echo "========================================================================="
 fi
 
 config_dir="$HOME/.config/xcd"
@@ -103,18 +114,13 @@ if [ ! -d "$config_dir" ]; then
     touch $config_dir/$history_file
 fi
 
-cmd=$1
-shift
-filter=$1
-shift
-
 keep_running=1
 
 while [ $keep_running -eq 1 ]; do
 	keep_running=0
-	
+
 	# echo C:\'$cmd\' F:\'$filter\'
-	
+
 	if [ "$cmd" == "--add" ] || [ "$cmd" == "-a" ]; then
 		loc=$filter
 		if [ "$loc" == "" ]; then
@@ -123,7 +129,7 @@ while [ $keep_running -eq 1 ]; do
 		echo $loc >> $config_dir/$places_file
 		sort -u -o $config_dir/$places_file $config_dir/$places_file
 		echo Added \'$loc\'
-		
+
 	elif [ "$cmd" == "--remove" ] || [ "$cmd" == "-r" ]; then
 		echo -e "\e[1mSelect entry to be removed:\e[0m"
 		show_selector "selected_path" $config_dir/$places_file $filter "" "Remove"
@@ -136,8 +142,8 @@ while [ $keep_running -eq 1 ]; do
 		else
 			echo Error: could not find \'$selected_path\'
 		fi
-		
-	elif [ "$cmd" == "--help" ] || [ "$cmd" == "-?" ] || [ "$cmd" == "" ]; then
+
+	elif [ "$cmd" == "" ]; then
 		echo
 		echo [G] Go to a location
 		echo [A] Add a location
@@ -149,17 +155,17 @@ while [ $keep_running -eq 1 ]; do
 		else
 		    echo
 		    echo History:
-		    show_selector "cmdsel" $config_dir/$history_file "-~tail -n $len_quick_history" "raw_input" "Choose" "no_shortcut"
+		    show_selector "cmdsel" $config_dir/$history_file "-~head -n $len_quick_history" "raw_input" "Choose" "no_shortcut"
 		fi
 
 		if [ "$cmdsel" == "" ]; then
 		    cmd=-${raw_input:0:1}
 		    filter=${raw_input:1}
-		    
+
 		    filter=`echo $filter | sed 's/^ *//g' | sed 's/ *$//g'`
-		    
+
 		    # echo C:\'$cmd\' F:\'$filter\'
-		    
+
 		    if [ "$raw_input" != "" ]; then
 			    keep_running=1
 			    echo
@@ -167,12 +173,37 @@ while [ $keep_running -eq 1 ]; do
 		else
 		    cd $cmdsel
 		fi
-		
+
+    elif [ "$cmd" == "--help" ] || [ "$cmd" == "-?" ]; then
+        echo "Usage: xcd [-a [\<path\>]] [-r] [-v] [--help] [--setup]"
+        echo ""
+        echo "    -a | --add [\<path\>]  Adds path to list of favourite paths."
+        echo "                           If no path is given the current work dir is used."
+        echo "    -r | --remove          Removes path from favourites. Will show a selection."
+        echo "    --setup                Adds an alias for xcd to your .bashrc"
+        echo "    -v | --version         Show version."
+        echo "    -? | --help            Shows this help."
+        echo ""
+
+    elif [ "$cmd" == "--version" ] || [ "$cmd" == "-v" ]; then
+        echo "Version: $version"
+
+    elif [ "$cmd" == "--setup" ]; then
+        is_installed=`grep "xcd=" "$HOME/.bashrc" | wc -l`
+        if [ "$is_installed" -eq "0" ]; then
+            echo "Adding alias for xcd to .bashrc ..."
+            echo "# added by xcd" >> "$HOME/.bashrc"
+            echo "alias xcd='. xcd'" >> "$HOME/.bashrc"
+            echo "Done. Please start your shell again."
+        else
+            echo "Alias for xcd is already present. Not changing .bashrc!"
+        fi
+
 	else
 		if [ "$cmd" != "-g" ]; then
 			filter=$cmd
 		fi
-		
+
 		echo -e "\e[1mFilter '$filter'\e[0m"
 		show_selector "selected_path" $config_dir/$places_file "$filter" "raw_input" "Go to"
 		# echo SEL is $selected_path
