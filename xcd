@@ -1,0 +1,196 @@
+#!/usr/bin/env bash
+
+# USAGE ask_user(var_name, title, default, prompt)
+ask_user() {
+    echo -en "\e[1m${2:-Please choose:}\e[0m"
+    read -e -i "${3}" -p "${4:-: }" $1
+}
+
+# USAGE show_selector(var_name, file_path, filter, var_name_rawinput, title, no_shortcut)
+show_selector() {
+    var_name=$1
+    file_path=$2
+    filter=$3
+    var_name_rawinput=$4
+    title=$5
+    no_shortcut=$6
+
+    do_modify='tee'
+
+    if [ "$filter" == "" ]; then
+        do_filter='tee'
+    else
+
+        if [ "${filter:0:1}" == "-" ]; then
+            filter=${filter:1}
+            do_modify='tac'
+        fi
+
+        if [ "${filter:0:1}" == "~" ]; then
+            do_filter=${filter:1}
+        else
+            do_filter="grep -i $filter"
+        fi
+    fi
+
+    items=()
+    c=0
+    while read line ; do
+        c=$(( $c + 1))
+        items+=($line)
+        echo "[$c] $line"
+    done < <(cat $file_path | $do_modify | $do_filter)
+
+    num_items=${#items[@]}
+    isel=
+
+    if [ $num_items -eq 0 ]; then
+        echo No matches found! Sorry :\)
+
+    elif [ "$no_shortcut" == "" ] && [ $num_items -eq 1 ]; then
+        ask_user "isel" "${title:-Choose [1] ?} [Y/n]"
+        if [ "$isel" == "" ] || [ "$isel" == "y" ] || [ "$isel" == "Y" ] || [ "$isel" == "1" ]; then
+            isel=1
+        else
+            isel=
+        fi
+
+    else
+        ask_user "isel" "${title:-Choose}"
+    fi
+
+    if [ ! "$var_name_rawinput" == "" ]; then
+        eval $var_name_rawinput=\"$isel\"
+    fi
+
+    if [ ! "$isel" == "" ]; then
+        if [[ $isel =~ ^[0-9]+$ ]]; then
+            isel=$(($isel - 1))
+            xpath=${items[$isel]}
+            #echo Selected index is $isel
+            #echo Selected item is ${items[$isel]}
+            eval $var_name="$xpath"
+        else
+            eval $var_name=""
+        fi
+    else
+        eval $var_name=""
+    fi
+
+}
+
+# ============================================================================
+
+is_installed=`alias | grep "xcd=" | wc -l`
+if [ "$is_installed" == "0" ]; then
+    echo =======================================================================
+    echo Please install xcd by putting \"alias xcd='. xcd'\" into your rc script
+    echo =======================================================================
+fi
+
+config_dir="$HOME/.config/xcd"
+places_file=xcd_places.config
+history_file=xcd_history
+
+len_quick_history=5
+
+term_w=`tput cols`
+term_h=`tput lines`
+
+if [ ! -d "$config_dir" ]; then
+    mkdir $config_dir
+    touch $config_dir/$places_file
+    touch $config_dir/$history_file
+fi
+
+cmd=$1
+shift
+filter=$1
+shift
+
+keep_running=1
+
+while [ $keep_running -eq 1 ]; do
+	keep_running=0
+	
+	# echo C:\'$cmd\' F:\'$filter\'
+	
+	if [ "$cmd" == "--add" ] || [ "$cmd" == "-a" ]; then
+		loc=$filter
+		if [ "$loc" == "" ]; then
+		    loc=$PWD
+		fi
+		echo $loc >> $config_dir/$places_file
+		sort -u -o $config_dir/$places_file $config_dir/$places_file
+		echo Added \'$loc\'
+		
+	elif [ "$cmd" == "--remove" ] || [ "$cmd" == "-r" ]; then
+		echo -e "\e[1mSelect entry to be removed:\e[0m"
+		show_selector "selected_path" $config_dir/$places_file $filter "" "Remove"
+
+		if [ ! "$selected_path" == "" ]; then
+		    cat $config_dir/$places_file | grep -v -x "$selected_path" > $config_dir/${places_file}.tmp
+		    rm $config_dir/$places_file
+		    mv $config_dir/${places_file}.tmp $config_dir/$places_file
+		    echo Removed \'$selected_path\'
+		else
+			echo Error: could not find \'$selected_path\'
+		fi
+		
+	elif [ "$cmd" == "--help" ] || [ "$cmd" == "-?" ] || [ "$cmd" == "" ]; then
+		echo
+		echo [G] Go to a location
+		echo [A] Add a location
+		echo [R] Remove a location
+		history_count=`cat $config_dir/$history_file | wc -l`
+		if [ $history_count -eq 0 ]; then
+		    ask_user "raw_input" "Choose"
+		    cmdsel=""
+		else
+		    echo
+		    echo History:
+		    show_selector "cmdsel" $config_dir/$history_file "-~tail -n $len_quick_history" "raw_input" "Choose" "no_shortcut"
+		fi
+
+		if [ "$cmdsel" == "" ]; then
+		    cmd=-${raw_input:0:1}
+		    filter=${raw_input:1}
+		    
+		    filter=`echo $filter | sed 's/^ *//g' | sed 's/ *$//g'`
+		    
+		    # echo C:\'$cmd\' F:\'$filter\'
+		    
+		    if [ "$raw_input" != "" ]; then
+			    keep_running=1
+			    echo
+			fi
+		else
+		    cd $cmdsel
+		fi
+		
+	else
+		if [ "$cmd" != "-g" ]; then
+			filter=$cmd
+		fi
+		
+		echo -e "\e[1mFilter '$filter'\e[0m"
+		show_selector "selected_path" $config_dir/$places_file "$filter" "raw_input" "Go to"
+		# echo SEL is $selected_path
+
+		if [ ! "$selected_path" == "" ]; then
+		    cd $selected_path
+
+		    exists_in_file=`grep -x "$selected_path" $config_dir/$history_file | wc -l`
+
+		    if [ $exists_in_file -eq 0 ]; then
+		        #echo ADDED to history
+		        echo $selected_path >> $config_dir/$history_file
+		        tail -n 10 $config_dir/$history_file > $config_dir/${history_file}.tmp
+		        rm $config_dir/$history_file
+		        mv $config_dir/${history_file}.tmp $config_dir/$history_file
+		    #else
+		    #   echo ALREADY in history
+		    fi
+		fi
+	fi
+done
