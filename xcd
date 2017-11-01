@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# GLight controls LEDs of some Logitech devices
+# Extended cd command, which can store your favourite paths for easy access
 #
 # Copyright (C) 2017  Martin Feil aka. SGDW
 #

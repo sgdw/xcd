@@ -1,6 +1,6 @@
 # xcd
 
-Is an extended **cd** comand, which can store your favourite paths for easy access.
+Is an extended **cd** command, which can store your favourite paths for easy access.
 
 ## Usage
 
